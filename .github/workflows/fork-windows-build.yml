@@ -1,0 +1,54 @@
+# Unsigned Windows installer for a personal fork, on GitHub's free hosted
+# runner. Upstream releases need paid runners and signing secrets a fork does
+# not have. T3 Connect sign-in is not configured in these builds; local,
+# LAN, and Tailscale connections work.
+#
+#   gh workflow run fork-windows-build.yml --ref <branch>
+#   gh run watch && gh run download --name t3code-windows-x64
+name: Fork Windows build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Windows x64 installer
+    if: github.repository != 'pingdotgg/t3code'
+    runs-on: windows-2025
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: false
+          run-install: false
+
+      - name: Setup Rust
+        shell: pwsh
+        run: rustup target add x86_64-pc-windows-msvc
+
+      - name: Install
+        run: vp install
+
+      - name: Build installer
+        run: vp run dist:desktop:win:x64
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: t3code-windows-x64
+          path: release/*.exe
+          if-no-files-found: error
+          retention-days: 14
