@@ -478,6 +478,13 @@ export const OrchestratorMcpCapabilitiesResult = Schema.Struct({
   parentThreadId: ThreadId,
   inheritedProviderInstanceId: ProviderInstanceId,
   inheritedModel: Schema.String,
+  /** Where delegate_task runs when it names no target; null inherits the parent. */
+  delegationDefault: Schema.NullOr(
+    Schema.Struct({
+      providerInstanceId: ProviderInstanceId,
+      model: Schema.String,
+    }),
+  ),
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
   providers: Schema.Array(OrchestratorMcpProviderCapability),

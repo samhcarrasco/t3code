@@ -21,6 +21,7 @@ import * as ThreadManagementService from "../orchestration-v2/ThreadManagementSe
 import * as ProviderRegistry from "../provider/Services/ProviderRegistry.ts";
 import { buildUnavailableProviderSnapshot } from "../provider/unavailableProviderSnapshot.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import type { McpInvocationScope } from "./McpInvocationContext.ts";
 import * as OrchestratorMcpService from "./OrchestratorMcpService.ts";
 
@@ -101,6 +102,7 @@ describe("OrchestratorMcpService", () => {
         Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({
           list: () => Effect.succeed([]),
         }),
+        ServerSettings.layerTest(),
         Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
       );
       const scope: McpInvocationScope = {
@@ -178,6 +180,7 @@ describe("OrchestratorMcpService", () => {
         Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({
           list: () => Effect.succeed([]),
         }),
+        ServerSettings.layerTest(),
         Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
       );
       const scope: McpInvocationScope = {
@@ -246,6 +249,7 @@ describe("OrchestratorMcpService", () => {
         Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({
           list: () => Effect.succeed([]),
         }),
+        ServerSettings.layerTest(),
         Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
       );
       const scope: McpInvocationScope = {
@@ -321,6 +325,7 @@ describe("OrchestratorMcpService", () => {
         Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({
           list: () => Effect.succeed([]),
         }),
+        ServerSettings.layerTest(),
         Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
       );
       const scope: McpInvocationScope = {
@@ -513,6 +518,7 @@ describe("OrchestratorMcpService provider resolution", () => {
             antigravityInstanceId,
             disabledAntigravityInstanceId,
           ]),
+          ServerSettings.layerTest(),
           Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
         );
 
@@ -656,6 +662,7 @@ describe("OrchestratorMcpService provider resolution", () => {
             ]),
           }),
           adapterRegistryLayer([codexInstanceId, antigravityInstanceId]),
+          ServerSettings.layerTest(),
           Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
         );
 
@@ -681,6 +688,141 @@ describe("OrchestratorMcpService provider resolution", () => {
         }).pipe(Effect.provide(OrchestratorMcpService.layer.pipe(Layer.provide(dependencies))));
       }),
   );
+
+  describe("delegation model setting", () => {
+    const claudeInstanceId = ProviderInstanceId.make("claudeAgent");
+    const claudeSelection = {
+      instanceId: claudeInstanceId,
+      model: "claude-sonnet-4-6",
+      options: [{ id: "effort", value: "medium" }],
+    };
+
+    const delegateWith = (input: {
+      readonly target?: { readonly model: string };
+      readonly claudeEnabled?: boolean;
+    }) =>
+      Effect.gen(function* () {
+        let delegated = false;
+        const task = {
+          id: taskId,
+          threadId: parentThreadId,
+          runId: parentRunId,
+          parentNodeId,
+          origin: "app_owned",
+          createdBy: "agent",
+          driver: ProviderDriverKind.make("claudeAgent"),
+          providerInstanceId: claudeInstanceId,
+          providerThreadId: null,
+          childThreadId,
+          nativeTaskRef: null,
+          prompt: "Add a test.",
+          title: null,
+          model: "claude-sonnet-4-6",
+          status: "running",
+          result: null,
+          startedAt: null,
+          completedAt: null,
+        };
+        const dispatched = yield* Ref.make<ReadonlyArray<unknown>>([]);
+        const dependencies = Layer.mergeAll(
+          NodeServices.layer,
+          Layer.mock(ThreadManagementService.ThreadManagementService)({
+            getThreadRecords: (threadId) =>
+              Effect.succeed(
+                threadId === parentThreadId
+                  ? parentProjection(delegated ? [task] : [])
+                  : childProjection,
+              ),
+            dispatch: (command) =>
+              Ref.update(dispatched, (commands) => [...commands, command]).pipe(
+                Effect.andThen(
+                  Effect.sync(() => {
+                    delegated = true;
+                  }),
+                ),
+                Effect.as({
+                  sequence: 1,
+                  storedEvents: [
+                    {
+                      sequence: 1,
+                      commandId: null,
+                      event: { type: "subagent.updated", payload: task },
+                    },
+                  ],
+                } as never),
+              ),
+          }),
+          Layer.mock(ProviderRegistry.ProviderRegistry)({
+            getProviders: Effect.succeed([
+              providerSnapshot({
+                instanceId: codexInstanceId,
+                driver: ProviderDriverKind.make("codex"),
+                model: "gpt-5.4",
+              }),
+              providerSnapshot({
+                instanceId: claudeInstanceId,
+                driver: ProviderDriverKind.make("claudeAgent"),
+                model: "claude-sonnet-4-6",
+                enabled: input.claudeEnabled ?? true,
+              }),
+            ]),
+          }),
+          adapterRegistryLayer([codexInstanceId, claudeInstanceId]),
+          ServerSettings.layerTest({ delegationModelSelection: claudeSelection }),
+          Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
+        );
+
+        return yield* Effect.gen(function* () {
+          const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+          const capabilities = yield* service.capabilities(scope);
+          yield* service.delegateTask(scope, {
+            task: "Add a test.",
+            ...(input.target === undefined ? {} : { target: input.target }),
+            mode: "async",
+            clientRequestId: "delegate-default-model",
+          });
+          const commands = yield* Ref.get(dispatched);
+          assert.equal(commands.length, 1);
+          const request = commands[0] as {
+            readonly modelSelection: {
+              readonly instanceId: string;
+              readonly model: string;
+              readonly options?: ReadonlyArray<{ readonly id: string; readonly value: unknown }>;
+            };
+          };
+          return { capabilities, modelSelection: request.modelSelection };
+        }).pipe(Effect.provide(OrchestratorMcpService.layer.pipe(Layer.provide(dependencies))));
+      });
+
+    it.effect("runs untargeted children on the delegation model", () =>
+      Effect.gen(function* () {
+        const { capabilities, modelSelection } = yield* delegateWith({});
+        assert.deepEqual(modelSelection, claudeSelection);
+        assert.deepEqual(capabilities.delegationDefault, {
+          providerInstanceId: claudeInstanceId,
+          model: "claude-sonnet-4-6",
+        });
+        assert.equal(capabilities.inheritedModel, "gpt-5.4");
+      }),
+    );
+
+    it.effect("lets an explicit target override the delegation model", () =>
+      Effect.gen(function* () {
+        const { modelSelection } = yield* delegateWith({ target: { model: "gpt-5.4" } });
+        assert.equal(modelSelection.instanceId, codexInstanceId);
+        assert.equal(modelSelection.model, "gpt-5.4");
+      }),
+    );
+
+    it.effect("inherits the parent model while the delegation provider is unavailable", () =>
+      Effect.gen(function* () {
+        const { capabilities, modelSelection } = yield* delegateWith({ claudeEnabled: false });
+        assert.equal(modelSelection.instanceId, codexInstanceId);
+        assert.equal(modelSelection.model, "gpt-5.4");
+        assert.isNull(capabilities.delegationDefault);
+      }),
+    );
+  });
 
   it.effect("resolves a driverKind target to a capable Antigravity instance", () =>
     Effect.gen(function* () {
@@ -749,6 +891,7 @@ describe("OrchestratorMcpService provider resolution", () => {
           ]),
         }),
         adapterRegistryLayer([codexInstanceId, antigravityInstanceId]),
+        ServerSettings.layerTest(),
         Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
       );
 
@@ -797,6 +940,7 @@ describe("OrchestratorMcpService provider resolution", () => {
           ]),
         }),
         adapterRegistryLayer([codexInstanceId]),
+        ServerSettings.layerTest(),
         Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
       );
 
@@ -960,6 +1104,7 @@ describe("OrchestratorMcpService provider resolution", () => {
               ]),
             }),
             adapterRegistryLayer([codexInstanceId, codexAltInstanceId]),
+            ServerSettings.layerTest(),
             Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
           );
 

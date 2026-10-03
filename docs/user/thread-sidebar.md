@@ -197,6 +197,10 @@ snooze limit stops by default. Providers without a reset time offer manual
 retry and the normal snooze choices.
 
 On web and desktop, use **Agents** to follow work delegated to subagents.
+Subagents run on the parent thread's model unless the agent picks one. To send
+routine delegated work to a cheaper model by default, turn on **Settings →
+General → Delegation model**; agents can still choose a stronger model for a
+specific task.
 
 Subagent threads started by the agent can't take messages; message the parent
 thread instead. When such a subagent needs an approval or an answer, the parent

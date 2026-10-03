@@ -753,6 +753,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     environmentOnly: true,
   },
   {
+    id: "delegation-model",
+    title: "Delegation model",
+    to: "/settings/general",
+    searchTerms: ["subagent child task delegate cheaper model orchestrator default provider"],
+    environmentOnly: true,
+    scope: "environment-defaults",
+  },
+  {
     id: "source-control-writer-model",
     title: "Source control writer model",
     to: "/settings/source-control",

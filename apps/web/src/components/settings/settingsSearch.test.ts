@@ -168,6 +168,7 @@ describe("searchSettings", () => {
       "provider-health-check-interval",
       "cursor-keychain-usage",
       "source-control-writer-model",
+      "delegation-model",
       "source-control-writing-style",
       "t3-connect",
       "tailscale-https",

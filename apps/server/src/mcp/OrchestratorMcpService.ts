@@ -69,6 +69,7 @@ import {
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as ProviderRegistry from "../provider/Services/ProviderRegistry.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import type { McpInvocationScope } from "./McpInvocationContext.ts";
 
 const DEFAULT_WAIT_TIMEOUT_MS = 10 * 60 * 1_000;
@@ -227,6 +228,45 @@ function providerConstraints(
     constraints.push("Provider is not authenticated.");
   }
   return constraints;
+}
+
+/**
+ * Applies the delegation model setting to a delegate_task call that names no
+ * target. Any explicit target field wins, and a configured model that cannot
+ * serve a child right now falls back to the parent's model so delegation
+ * keeps working while the preferred provider is unavailable.
+ */
+export function delegationDefaultTarget(input: {
+  readonly requested: OrchestratorMcpTarget | undefined;
+  readonly selection: ModelSelection | null;
+  readonly providers: ReadonlyArray<ServerProvider>;
+  readonly orchestrationCapableInstanceIds: ReadonlySet<ServerProvider["instanceId"]>;
+}): OrchestratorMcpTarget | undefined {
+  const { requested, selection } = input;
+  const namesTarget =
+    requested !== undefined &&
+    (requested.providerInstanceId !== undefined ||
+      requested.driverKind !== undefined ||
+      requested.model !== undefined ||
+      requested.options !== undefined);
+  if (namesTarget || selection === null) return requested;
+  const provider = input.providers.find(
+    (candidate) => candidate.instanceId === selection.instanceId,
+  );
+  if (
+    provider === undefined ||
+    providerConstraints(provider, input.orchestrationCapableInstanceIds.has(provider.instanceId))
+      .length > 0 ||
+    (provider.models.length > 0 &&
+      !provider.models.some((candidate) => candidate.slug === selection.model))
+  ) {
+    return requested;
+  }
+  return {
+    providerInstanceId: selection.instanceId,
+    model: selection.model,
+    ...(selection.options === undefined ? {} : { options: selection.options }),
+  };
 }
 
 /**
@@ -756,6 +796,14 @@ const make = Effect.gen(function* () {
   const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
   const providerAdapters = yield* ProviderAdapterRegistry.ProviderAdapterRegistryV2;
   const scheduledTasks = yield* ScheduledTaskService.ScheduledTaskService;
+  const serverSettings = yield* ServerSettings.ServerSettingsService;
+
+  // An unreadable settings file must not block delegation; children then
+  // inherit the parent's model as they did before the setting existed.
+  const loadDelegationModelSelection = serverSettings.getSettings.pipe(
+    Effect.map((settings) => settings.delegationModelSelection),
+    Effect.orElseSucceed(() => null),
+  );
 
   const requireCapability = (scope: McpInvocationScope) =>
     scope.capabilities.has("orchestration")
@@ -1313,10 +1361,24 @@ const make = Effect.gen(function* () {
         const parent = yield* loadProjection(scope.threadId);
         const providers = yield* loadProviders;
         const orchestrationCapableInstanceIds = yield* loadOrchestrationCapableInstanceIds();
+        const delegationDefault = delegationDefaultTarget({
+          requested: undefined,
+          selection: yield* loadDelegationModelSelection,
+          providers,
+          orchestrationCapableInstanceIds,
+        });
         return {
           parentThreadId: scope.threadId,
           inheritedProviderInstanceId: parent.thread.modelSelection.instanceId,
           inheritedModel: parent.thread.modelSelection.model,
+          delegationDefault:
+            delegationDefault?.providerInstanceId === undefined ||
+            delegationDefault.model === undefined
+              ? null
+              : {
+                  providerInstanceId: delegationDefault.providerInstanceId,
+                  model: delegationDefault.model,
+                },
           runtimeMode: parent.thread.runtimeMode,
           interactionMode: parent.thread.interactionMode,
           providers: providers.map((provider) => {
@@ -1373,7 +1435,12 @@ const make = Effect.gen(function* () {
         const providers = yield* loadProviders;
         const target = yield* resolveTarget({
           parent,
-          target: input.target,
+          target: delegationDefaultTarget({
+            requested: input.target,
+            selection: yield* loadDelegationModelSelection,
+            providers,
+            orchestrationCapableInstanceIds: yield* loadOrchestrationCapableInstanceIds(),
+          }),
           providers,
         });
         const runtimeMode = yield* resolveRuntimeMode(parent.thread.runtimeMode, input.runtimeMode);
@@ -1947,4 +2014,5 @@ export const layer: Layer.Layer<
   | ProviderRegistry.ProviderRegistry
   | ProviderAdapterRegistry.ProviderAdapterRegistryV2
   | ScheduledTaskService.ScheduledTaskService
+  | ServerSettings.ServerSettingsService
 > = Layer.effect(OrchestratorMcpService, make);
