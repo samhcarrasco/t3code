@@ -409,6 +409,11 @@ export const OrchestratorMcpThreadSendInput = Schema.Struct({
   threadId: ThreadId,
   message: OrchestratorMcpPrompt,
   mode: Schema.optional(Schema.Literals(["auto", "queue", "steer", "restart"])),
+  /**
+   * Provider and model for the turn this message starts. The thread keeps its
+   * history and workspace and stays on the new selection afterwards.
+   */
+  target: Schema.optional(OrchestratorMcpTarget),
   clientRequestId: Schema.optional(OrchestratorMcpClientRequestId),
 });
 export type OrchestratorMcpThreadSendInput = typeof OrchestratorMcpThreadSendInput.Type;

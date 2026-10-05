@@ -7,6 +7,7 @@ import {
   codexRateLimitsToUpdate,
   codexResetCreditsToContract,
   codexUsageLimitMessage,
+  isCodexUsageLimitFailure,
   mergeCodexRateLimits,
 } from "./codexUsageLimits.ts";
 
@@ -312,5 +313,19 @@ describe("codexUsageLimitResetAt", () => {
     expect(
       codexUsageLimitResetAt({ primary: { usedPercent: 50, resetsAt: 2000000000 } }),
     ).toBeNull();
+  });
+});
+
+describe("isCodexUsageLimitFailure", () => {
+  it("recognizes a limit reported only as a stream error message", () => {
+    expect(isCodexUsageLimitFailure("usageLimitExceeded", undefined)).toBe(true);
+    expect(
+      isCodexUsageLimitFailure(
+        null,
+        "stream disconnected before completion: The ChatGPT user has reached their Subscription Sharing usage limit.",
+      ),
+    ).toBe(true);
+    expect(isCodexUsageLimitFailure(null, "stream disconnected before completion")).toBe(false);
+    expect(isCodexUsageLimitFailure("httpConnectionFailed", null)).toBe(false);
   });
 });

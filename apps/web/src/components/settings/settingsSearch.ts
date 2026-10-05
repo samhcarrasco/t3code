@@ -293,6 +293,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["usage quota rate limit reset recover continue"],
   },
   {
+    id: "limit-failover-scheduled-tasks",
+    title: "Start scheduled tasks on a usage limit",
+    to: "/settings/general",
+    searchTerms: ["usage quota rate limit failover fallback other provider scheduled task"],
+  },
+  {
     id: "working-shelf",
     title: "Working section (beta)",
     to: "/settings/general",

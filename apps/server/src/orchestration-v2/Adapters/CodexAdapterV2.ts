@@ -19,6 +19,7 @@ import {
   codexRateLimitsToUpdate,
   mergeCodexRateLimits,
   codexUsageLimitResetAt,
+  isCodexUsageLimitFailure,
   type CodexRateLimitSnapshot,
 } from "../../provider/Layers/codexUsageLimits.ts";
 import {
@@ -3923,11 +3924,12 @@ export function makeCodexAdapterV2(adapterOptions: CodexAdapterV2Options): Provi
                 failure: makeProviderFailure({
                   message: payload.error.additionalDetails?.trim() || payload.error.message,
                   code: notificationCode,
-                  class:
-                    notificationCode === "usageLimitExceeded" ||
-                    notificationCode === "rateLimitExceeded"
-                      ? "usage_limit"
-                      : "provider_error",
+                  class: isCodexUsageLimitFailure(
+                    notificationCode,
+                    `${payload.error.message} ${payload.error.additionalDetails ?? ""}`,
+                  )
+                    ? "usage_limit"
+                    : "provider_error",
                 }),
               };
               return;
@@ -3948,12 +3950,14 @@ export function makeCodexAdapterV2(adapterOptions: CodexAdapterV2Options): Provi
                   ? payload.error.message
                   : additionalDetails,
               code,
-              class:
-                code === "usageLimitExceeded" || code === "rateLimitExceeded"
-                  ? "usage_limit"
-                  : code?.startsWith("http") === true || code?.startsWith("responseStream") === true
-                    ? "transport_error"
-                    : "provider_error",
+              class: isCodexUsageLimitFailure(
+                code,
+                `${payload.error.message} ${additionalDetails ?? ""}`,
+              )
+                ? "usage_limit"
+                : code?.startsWith("http") === true || code?.startsWith("responseStream") === true
+                  ? "transport_error"
+                  : "provider_error",
               retryable: true,
             });
             const itemOrdinal =
@@ -4940,11 +4944,9 @@ export function makeCodexAdapterV2(adapterOptions: CodexAdapterV2Options): Provi
                   : makeProviderFailure({
                       message: input.failureMessage,
                       code: input.failureCode,
-                      class:
-                        input.failureCode === "usageLimitExceeded" ||
-                        input.failureCode === "rateLimitExceeded"
-                          ? "usage_limit"
-                          : "provider_error",
+                      class: isCodexUsageLimitFailure(input.failureCode, input.failureMessage)
+                        ? "usage_limit"
+                        : "provider_error",
                     });
               return {
                 type: "turn.terminal",

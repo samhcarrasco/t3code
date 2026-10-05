@@ -570,6 +570,10 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.snoozeLimitedThreads !== DEFAULT_UNIFIED_SETTINGS.snoozeLimitedThreads
         ? ["Snooze limited threads"]
         : []),
+      ...(settings.limitFailoverScheduledTasks !==
+      DEFAULT_UNIFIED_SETTINGS.limitFailoverScheduledTasks
+        ? ["Start scheduled tasks on a usage limit"]
+        : []),
       ...(settings.wordWrap !== DEFAULT_UNIFIED_SETTINGS.wordWrap ? ["Word wrap"] : []),
       ...(settings.persistComposerContextStrip !==
       DEFAULT_UNIFIED_SETTINGS.persistComposerContextStrip
@@ -692,6 +696,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.sidebarAutoSettleOnMerge,
       settings.autoResumeLimitedThreads,
       settings.snoozeLimitedThreads,
+      settings.limitFailoverScheduledTasks,
       settings.sidebarProjectGroupingMode,
       settings.sidebarWorkingShelfEnabled,
       settings.sidebarThreadPreviewCount,
@@ -797,6 +802,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       sidebarAutoSettleOnMerge: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleOnMerge,
       autoResumeLimitedThreads: DEFAULT_UNIFIED_SETTINGS.autoResumeLimitedThreads,
       snoozeLimitedThreads: DEFAULT_UNIFIED_SETTINGS.snoozeLimitedThreads,
+      limitFailoverScheduledTasks: DEFAULT_UNIFIED_SETTINGS.limitFailoverScheduledTasks,
       responseStreamingMode: DEFAULT_UNIFIED_SETTINGS.responseStreamingMode,
       enableProviderUpdateChecks: DEFAULT_UNIFIED_SETTINGS.enableProviderUpdateChecks,
       continueThreadsAfterServerUpdate: DEFAULT_UNIFIED_SETTINGS.continueThreadsAfterServerUpdate,
@@ -2304,6 +2310,22 @@ export function GeneralSettingsPanel() {
                 updateSettings({ snoozeLimitedThreads: Boolean(checked) })
               }
               aria-label="Snooze limited threads"
+            />
+          }
+        />
+        <SettingsRow
+          serverScoped
+          {...searchableSetting("limit-failover-scheduled-tasks")}
+          description="When a thread stops on a usage limit, start the project's enabled scheduled tasks that run on a different provider."
+          settingKeys={["limitFailoverScheduledTasks"]}
+          control={
+            <ScopedSwitch
+              settingKeys={["limitFailoverScheduledTasks"]}
+              checked={settings.limitFailoverScheduledTasks}
+              onCheckedChange={(checked) =>
+                updateSettings({ limitFailoverScheduledTasks: Boolean(checked) })
+              }
+              aria-label="Start scheduled tasks on a usage limit"
             />
           }
         />

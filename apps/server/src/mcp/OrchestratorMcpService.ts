@@ -1902,6 +1902,16 @@ const make = Effect.gen(function* () {
         yield* resolveInteractionMode(parent.thread.interactionMode, target.thread.interactionMode);
 
         const mode = input.mode ?? "auto";
+        // Omitted target fields inherit from the thread being continued, so
+        // naming only a provider moves it there and keeps nothing stale.
+        const retarget =
+          input.target === undefined
+            ? undefined
+            : yield* resolveTarget({
+                parent: target,
+                target: input.target,
+                providers: yield* loadProviders,
+              });
         const key = yield* requestKey(input.clientRequestId);
         const messageId = stableOperationMessageId({
           scope,
@@ -1921,6 +1931,7 @@ const make = Effect.gen(function* () {
             messageId,
             text: input.message,
             attachments: [],
+            ...(retarget === undefined ? {} : { modelSelection: retarget.modelSelection }),
             mode,
             createdBy: "agent",
             creationSource: "mcp",

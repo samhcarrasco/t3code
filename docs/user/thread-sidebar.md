@@ -196,6 +196,13 @@ the snooze. Enable **Snooze limited threads** in thread behavior settings to
 snooze limit stops by default. Providers without a reset time offer manual
 retry and the normal snooze choices.
 
+To keep work moving while one provider is out, enable **Start scheduled tasks on
+a usage limit** in **Settings → General**. When a thread stops on a usage limit,
+the project's enabled scheduled tasks that run on a different provider start
+about 30 seconds later. A task is not started while its own provider is waiting
+for a reset. An agent can then continue a stopped thread on another provider,
+keeping its history and worktree.
+
 On web and desktop, use **Agents** to follow work delegated to subagents.
 Subagents run on the parent thread's model unless the agent picks one. To send
 routine delegated work to a cheaper model by default, turn on **Settings →

@@ -233,6 +233,18 @@ export function codexUsageLimitMessage(
   return `Codex usage limit reached.${reset}${codexUsageLimitNextStep(snapshot?.rateLimitReachedType)}`;
 }
 
+/**
+ * Codex reports an exhausted plan either with a usage-limit error code or, for
+ * some plans, as a plain stream error whose only signal is its message.
+ */
+export function isCodexUsageLimitFailure(
+  code: string | null | undefined,
+  message: string | null | undefined,
+): boolean {
+  if (code === "usageLimitExceeded" || code === "rateLimitExceeded") return true;
+  return typeof message === "string" && /usage limit/iu.test(message);
+}
+
 /** All exhausted windows must reset before a continuation can run. */
 export function codexUsageLimitResetAt(
   snapshot: CodexRateLimitSnapshot | undefined,
